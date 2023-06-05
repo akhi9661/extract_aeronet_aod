@@ -211,9 +211,6 @@ def gee_point_extract(point_filename, product = 'LANDSAT/LC08/C02/T1_TOA', start
         final_df.to_csv(opf, index = False)
         return final_df
     
-
-
-
 def download_aeronet_sites(year = 2021, level = 1.5, bbox = [2.0, 65.0, 40.0, 100.0], dest_folder = os.getcwd()):
 
     '''
