@@ -1,0 +1,6 @@
+numpy
+ee
+geopandas
+pandas
+gee_subset
+regex
