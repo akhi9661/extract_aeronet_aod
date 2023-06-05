@@ -376,7 +376,8 @@ def extract_aeronet_and_reflectance(gee_product_id = 'LANDSAT/LC08/C02/T1_TOA',
                                     aeronet_level = 1.5, 
                                     temporal_average = 30,
                                     bbox = [2.0, 65.0, 40.0, 100.0], 
-                                    dest_folder = os.getcwd()):
+                                    dest_folder = os.getcwd(), 
+                                    verbose = True):
     
     '''
     This is the caller function for the AERONET and reflectance extraction process. 
@@ -393,6 +394,7 @@ def extract_aeronet_and_reflectance(gee_product_id = 'LANDSAT/LC08/C02/T1_TOA',
         temporal_average (int): The temporal scale for which the AERONET data is to be downloaded (in minutes). Default is 60.
         bbox (list): The bounding box for which the reflectance data is to be extracted. Default is `[2.0, 65.0, 40.0, 100.0]`.
         dest_folder (str): The destination folder where the AERONET and reflectance data is to be saved. Default is the current working directory.
+        verbose (bool): Whether to print the progress of the download. Default is True.
 
     Returns:
         pandas.DataFrame: The dataframe containing the AERONET AOD and reflectance data.
@@ -431,7 +433,7 @@ def extract_aeronet_and_reflectance(gee_product_id = 'LANDSAT/LC08/C02/T1_TOA',
                                  end_date = end_date_str, id_col = 'Site_Name',
                                  bands = spectral_bands, scale = scale, dest_folder = opf)
         aeronet_df = download_aeronet_aod(site, temporal_scale = temporal_average, level = aeronet_level, 
-                                          id_col = 'Site_Name', verbose = False)
+                                          id_col = 'Site_Name', verbose = True)
         
         aeronet_df.to_csv(os.path.join(opf, f'aeronet_{aeronet_level}_{year}_{gee_product_id.split("/")[-1]}.csv'))
         
