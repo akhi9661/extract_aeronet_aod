@@ -8,13 +8,14 @@ This python module downloads the AERONET AOD data and the reflectance data from 
 
 ## How to use
 ```python
-    aeronet_df = extract_aeronet_and_reflectance(gee_product_id = 'LANDSAT/LC08/C02/T1_TOA', 
+aeronet_df = extract_aeronet_and_reflectance(gee_product_id = 'LANDSAT/LC08/C02/T1_TOA', 
                                              start_date = '2021-10-01', 
                                              end_date = '2021-12-31',
                                              spectral_bands = ['B1', 'B5'],
-                                             scale = 10, 
+                                             scale = 30, 
                                              aeronet_level = 1.5, 
                                              temporal_average = 30,
                                              bbox = [10.0, 60.0, 35.0, 90.0], 
-                                             dest_folder = os.getcwd())
+                                             dest_folder = os.getcwd(), 
+                                             verbose = False)
 ```
