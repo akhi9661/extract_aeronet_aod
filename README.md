@@ -8,7 +8,7 @@ This python module downloads the AERONET AOD data and the reflectance data from 
 
 ## How to use
 ```python
-path = r'D:\Aerosol Modelling\Aerosol\Scripts\AERONET_module'
+path = r'D:\AERONET_module'
 aeronet_df = extract_aeronet_and_reflectance(gee_product_id = 'COPERNICUS/S2_SR_HARMONIZED', 
                                              start_date = '2018-01-01', 
                                              end_date = '2018-12-31',
