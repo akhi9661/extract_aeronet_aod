@@ -1,3 +1,12 @@
+import os, pandas as pd
+import ee
+import os
+import re
+from gee_subset import gee_subset
+import pandas as pd
+from datetime import datetime
+import geopandas as gpd
+
 def process_bitmask(dataframe):
     
     import pandas as pd
@@ -81,14 +90,6 @@ def gee_point_extract(point_filename, product = 'LANDSAT/LC08/C02/T1_TOA', start
     
     '''
     
-    import ee
-    import os
-    import re
-    from gee_subset import gee_subset
-    import pandas as pd
-    from datetime import datetime
-    import geopandas as gpd
-    
     if not ee.data._credentials:
         ee.Authenticate()
 
@@ -136,20 +137,23 @@ def gee_point_extract(point_filename, product = 'LANDSAT/LC08/C02/T1_TOA', start
     values = []
 
     for i in site:
-        print(start_date, end_date)
         
-        print(f"Extracting for {id_col}: {points.iloc[i, points.columns.get_loc(id_col)]}")
-        df = gee_subset.gee_subset(product = product,
-                                   bands = bands,
-                                   start_date = start_date,
-                                   end_date = end_date,
-                                   latitude = points.iloc[i, points.columns.get_loc('lat')],
-                                   longitude = points.iloc[i, points.columns.get_loc('lon')], 
-                                   scale = scale)
-    
-        sid =  str(points.iloc[i, points.columns.get_loc(id_col)])
-        df[id_col] = sid
-        values.append(df)
+        print(f"Extracting for {id_col}: {points.iloc[i, points.columns.get_loc(id_col)]}", end = '\r')
+        try: 
+            df = gee_subset.gee_subset(product = product,
+                                       bands = bands,
+                                       start_date = start_date,
+                                       end_date = end_date,
+                                       latitude = points.iloc[i, points.columns.get_loc('lat')],
+                                       longitude = points.iloc[i, points.columns.get_loc('lon')], 
+                                       scale = scale)
+
+            sid =  str(points.iloc[i, points.columns.get_loc(id_col)])
+            df[id_col] = sid
+            values.append(df)
+        except:
+            print('Error encountered')
+            continue
         
     df1 = pd.concat(values, ignore_index = True)        
     if 'QA_PIXEL' in bands or 'QA60' in bands:
@@ -211,14 +215,14 @@ def gee_point_extract(point_filename, product = 'LANDSAT/LC08/C02/T1_TOA', start
         final_df.to_csv(opf, index = False)
         return final_df
     
-def download_aeronet_sites(year = 2021, level = 1.5, bbox = [2.0, 65.0, 40.0, 100.0], dest_folder = os.getcwd()):
+def download_aeronet_sites(years = [2021], level = 1.5, bbox = [2.0, 65.0, 40.0, 100.0], dest_folder = os.getcwd(), site_name=None):
 
     '''
-    This function downloads the AERONET sites for a given year, level and bounding box. 
+    This function downloads the AERONET sites for given years, level and bounding box. 
     The format of the bounding box is [min_lat, min_lon, max_lat, max_lon]. 
 
     Parameters:
-        year (int): The year for which the AERONET sites are to be downloaded. Default is 2021.
+        year (list): The years for which the AERONET sites are to be downloaded. Default is 2021.
         level (float): The level of data to be downloaded. Default is 1.5. Available options are 1.0, 1.5, 2.0.
         bbox (list): The bounding box for which the AERONET sites are to be downloaded. Default is [2.0, 65.0, 40.0, 100.0].
         dest_folder (str): The destination folder where the AERONET sites are to be saved. Default is the current working directory.
@@ -228,28 +232,43 @@ def download_aeronet_sites(year = 2021, level = 1.5, bbox = [2.0, 65.0, 40.0, 10
     
     '''
 
-    import os, pandas as pd
+    opf = os.path.join(dest_folder, 'AERONET_S2')
+    os.makedirs(opf, exist_ok=True)
 
-    print(f'\nProcessing: Fetching AERONET sites for year {year}')
-    op_name = os.path.join(dest_folder, f'aeronet_sites_{year}.csv')
+    all_site_data = []
+
+    for year in years:
+        op_name = os.path.join(opf, f'aeronet_sites_{year}.csv')
+
+        if os.path.exists(op_name):
+            site_list = pd.read_csv(op_name)
+        else: 
+            url = f'https://aeronet.gsfc.nasa.gov/Site_Lists_V3/aeronet_locations_v3_{year}_lev{int(level*10)}.txt'
+            site_list = pd.read_csv(url, skiprows=1, sep=',')
+            site_list.to_csv(op_name, index=False)
+
+        site_list = site_list.iloc[:, :].rename(columns={'Longitude(decimal_degrees)': 'lon', 'Latitude(decimal_degrees)': 'lat'})
+
+        if site_name is None:
+            print(f'Processing: Fetching AERONET sites for year {year} within {bbox}\n')
+
+        if site_name is not None:
+            site_subset = site_list[site_list['Site_Name'] == site_name]
+        else:
+            min_lat, min_lon, max_lat, max_lon = bbox[0], bbox[1], bbox[2], bbox[3]
+            site_subset = site_list[(site_list['lon'] > min_lon) & (site_list['lon'] < max_lon) & 
+                                    (site_list['lat'] > min_lat) & (site_list['lat'] < max_lat)]
+
+        all_site_data.append(site_subset)
+
+    merged_data = pd.concat(all_site_data, ignore_index=True)
+    merged_data.drop_duplicates(subset = ['Site_Name', 'lon', 'lat'], inplace=True)
+
+    output_filename = f'selected_aeronet_{", ".join(map(str, years))}_{site_name if site_name is not None else "bbox"}.csv'
+    merged_data.to_csv(os.path.join(opf, output_filename), index=False)
     
-    if os.path.exists(op_name):
-        site_list = pd.read_csv(op_name)
-    else: 
-        url = f'https://aeronet.gsfc.nasa.gov/Site_Lists_V3/aeronet_locations_v3_{year}_lev{int(level*10)}.txt'
-        site_list = pd.read_csv(url, skiprows = 1, sep = ',')
-        site_list.to_csv(op_name, index = False)
-        
-    site_list = site_list.iloc[:, :4].rename(columns = {'Longitude(decimal_degrees)': 'lon', 'Latitude(decimal_degrees)': 'lat'})
-    print(f'Processing: Fetching AERONET sites for year {year} within {bbox}\n')
-    
-    min_lat, min_lon, max_lat, max_lon = bbox[0], bbox[1], bbox[2], bbox[3]
-    site_subset = site_list[(site_list['lon'] > min_lon) & (site_list['lon'] < max_lon) & 
-                            (site_list['lat'] > min_lat) & (site_list['lat'] < max_lat)]
-    site_subset.to_csv(os.path.join(dest_folder, f'selected_aeronet_{year}.csv'), index = False)
-    
-    print(f'Number of AERONET sites available: {len(site_subset)}')
-    return site_subset
+    print(f'Number of unique AERONET sites available for {", ".join(map(str, years))}: {len(merged_data)}')
+    return merged_data
 
 def average_aeronet(df):
 
@@ -330,11 +349,14 @@ def download_aeronet_aod(site, temporal_scale=60, level=1.5, id_col='Site_Name',
     
     from datetime import datetime, timedelta
     
-    print(f'\nProcessing: Fetching and averaging AERONET Level{level} values at \u00B1{temporal_scale}min\n')
+    print(f'Processing: Fetching and averaging AERONET Level{level} values at \u00B1{temporal_scale}min')
+    n = 1
+    skipped = 0
     site['date'] = pd.to_datetime(site['date'])
     site['hour'] = pd.to_datetime(site['date'].dt.strftime('%H:%M:%S.%f'), format='%H:%M:%S.%f').dt.time
 
     for i in range(len(site)):
+        print(f'Completed: [{n}/{len(site)}], {(n/len(site))*100:.3f}% [Skipped: {skipped}]', end = '\r')
         site_name = site.loc[i, id_col]
         date_obj = site.loc[i, 'date']
         year1 = year2 = int(date_obj.year)
@@ -361,49 +383,59 @@ def download_aeronet_aod(site, temporal_scale=60, level=1.5, id_col='Site_Name',
             else:
                 if verbose: 
                     print("No data in file from", url)
-        except (IOError, pd.errors.ParserError, pd.errors.EmptyDataError) as e:
-            print("Error occurred while downloading or parsing the file from", url)
-            print("Skipping to the next site.")
+            n += 1
+        except (IOError, pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError) as e:
+            skipped += 1
+            n += 1
+            if verbose: 
+                print("Error occurred while downloading or parsing the file from", url)
+                print("Skipping to the next site.")
             continue
-        
+    print('\n')        
     return site
 
-def extract_aeronet_and_reflectance(gee_product_id = 'LANDSAT/LC08/C02/T1_TOA', 
-                                    start_date = '2021-04-01', 
-                                    end_date = '2021-04-30',
-                                    spectral_bands = ['B1', 'B2', 'B3', 'B4'], 
-                                    scale = 30, 
-                                    aeronet_level = 1.5, 
-                                    temporal_average = 30,
-                                    bbox = [2.0, 65.0, 40.0, 100.0], 
-                                    dest_folder = os.getcwd(), 
-                                    verbose = True):
-    
+def extract_aeronet_and_reflectance(gee_product_id='LANDSAT/LC08/C02/T1_TOA',
+                                    start_date='2021-04-01',
+                                    end_date='2021-04-30',
+                                    spectral_bands=['B1', 'B2', 'B3', 'B4'],
+                                    scale=30,
+                                    aeronet_level=1.5,
+                                    temporal_average=30,
+                                    bbox=[2.0, 65.0, 40.0, 100.0],
+                                    dest_folder=os.getcwd(),
+                                    chunk_size=None,
+                                    verbose=True,
+                                    aeronet_site=None,
+                                    reflectance_df=None):
     '''
-    This is the caller function for the AERONET and reflectance extraction process. 
-    It calls the functions `download_aeronet_aod` and `extract_reflectance` to download the AERONET AOD data and 
-    extract the reflectance data from GEE, respectively.
+    Extract AERONET AOD and reflectance data.
 
+    This function initiates the process of downloading AERONET AOD (Aerosol Optical Depth) data from NASA AERONET site
+    and extracting reflectance data from Google Earth Engine (GEE) for a specified time period and geographical region.
+    
     Parameters:
-        gee_product_id (str): The GEE product ID. Default is `LANDSAT/LC08/C02/T1_TOA`.
-        start_date (str): The start date in the format `YYYY-MM-DD`. Default is `2021-04-01`.
-        end_date (str): The end date in the format `YYYY-MM-DD`. Default is `2021-04-30`.
-        spectral_bands (list): The list of spectral bands to be extracted. Default is `['B1', 'B2', 'B3', 'B4']`.
-        scale (int): The scale at which the reflectance data is to be extracted. Default is 30.
+        gee_product_id (str): The GEE product ID. Default is 'LANDSAT/LC08/C02/T1_TOA'.
+        start_date (str): The start date in the format 'YYYY-MM-DD'. Default is '2021-04-01'.
+        end_date (str): The end date in the format 'YYYY-MM-DD'. Default is '2021-04-30'.
+        spectral_bands (list): The list of spectral bands to be extracted. Default is ['B1', 'B2', 'B3', 'B4'].
+        scale (int): The scale at which the reflectance data is extracted. Default is 30 meters.
         aeronet_level (float): The level of AERONET data to be downloaded. Default is 1.5. Available options are 1.0, 1.5, 2.0.
-        temporal_average (int): The temporal scale for which the AERONET data is to be downloaded (in minutes). Default is 60.
-        bbox (list): The bounding box for which the reflectance data is to be extracted. Default is `[2.0, 65.0, 40.0, 100.0]`.
-        dest_folder (str): The destination folder where the AERONET and reflectance data is to be saved. Default is the current working directory.
+        temporal_average (int): The temporal scale for downloading AERONET data (in minutes). Default is 30 minutes.
+        bbox (list): The bounding box [min_longitude, min_latitude, max_longitude, max_latitude] for extracting reflectance data. Default is [2.0, 65.0, 40.0, 100.0].
+        dest_folder (str): The destination folder where AERONET and reflectance data will be saved. Default is the current working directory.
+        chunk_size (int): If specified, the function processes data in chunks of this size to manage memory. Default is None.
         verbose (bool): Whether to print the progress of the download. Default is True.
+        aeronet_site (DataFrame): A pre-existing DataFrame containing AERONET site information. Default is None.
+        reflectance_df (DataFrame): A pre-existing DataFrame containing reflectance data. Default is None.
 
     Returns:
-        pandas.DataFrame: The dataframe containing the AERONET AOD and reflectance data.
-    
+        pandas.DataFrame: The combined DataFrame containing AERONET AOD and reflectance data.
     '''
-    
+    # Create a folder to store intermediate files and results
     opf = os.path.join(dest_folder, 'AERONET_module')
-    os.makedirs(opf, exist_ok = True)
+    os.makedirs(opf, exist_ok=True)
 
+    # Split the date range into years and process each year separately
     start_year = int(start_date.split('-')[0])
     end_year = int(end_date.split('-')[0])
     start_month = int(start_date.split('-')[1])
@@ -428,13 +460,35 @@ def extract_aeronet_and_reflectance(gee_product_id = 'LANDSAT/LC08/C02/T1_TOA',
         start_date_str = f'{year}-{start_month:02d}-{start_day:02d}'
         end_date_str = f'{year}-{end_month:02d}-{end_day:02d}'
 
-        site_subset = download_aeronet_sites(year = year, level=aeronet_level, bbox = bbox, dest_folder = opf)
-        site = gee_point_extract(site_subset, product = gee_product_id, start_date = start_date_str, 
-                                 end_date = end_date_str, id_col = 'Site_Name',
-                                 bands = spectral_bands, scale = scale, dest_folder = opf)
-        aeronet_df = download_aeronet_aod(site, temporal_scale = temporal_average, level = aeronet_level, 
-                                          id_col = 'Site_Name', verbose = True)
-        
-        aeronet_df.to_csv(os.path.join(opf, f'aeronet_{aeronet_level}_{year}_{gee_product_id.split("/")[-1]}.csv'))
-        
+        # Download AERONET site data if not provided
+        if aeronet_site is not None:
+            site_subset = aeronet_site
+        else:
+            site_subset = download_aeronet_sites(year=year, level=aeronet_level, bbox=bbox, dest_folder=opf)
+
+        # Extract reflectance data from GEE if not provided
+        if reflectance_df is not None:
+            site = reflectance_df
+        else:
+            site = gee_point_extract(site_subset, product=gee_product_id, start_date=start_date_str,
+                                     end_date=end_date_str, id_col='Site_Name', bands=spectral_bands, scale=scale,
+                                     dest_folder=opf)
+
+        # Process data in chunks if chunk_size is specified
+        if chunk_size is not None:
+            opf_chunks = os.path.join(opf, 'Chunks')
+            os.makedirs(opf_chunks, exist_ok=True)
+            sliced_df = [site[i:i + chunk_size].reset_index(drop=True) for i in range(0, site.shape[0], chunk_size)]
+            for index, df in enumerate(sliced_df):
+                print(f'Processing: Chunk [{index} of {len(sliced_df)}]')
+                aeronet_df = download_aeronet_aod(df, temporal_scale=temporal_average, level=aeronet_level,
+                                                   id_col='Site_Name', verbose=verbose)
+                aeronet_df.to_csv(os.path.join(opf_chunks, f'aeronet_{index}_{aeronet_level}_{year}_{gee_product_id.split("/")[-1]}.csv'),
+                                  index=False)
+        else:
+            # Download AERONET AOD data and save to CSV
+            aeronet_df = download_aeronet_aod(site, temporal_scale=temporal_average, level=aeronet_level,
+                                               id_col='Site_Name', verbose=verbose)
+            aeronet_df.to_csv(os.path.join(opf, f'aeronet_{aeronet_level}_{year}_{gee_product_id.split("/")[-1]}.csv'), index=False)
+
     return aeronet_df
